@@ -15,7 +15,7 @@ from mcp.server.fastmcp import FastMCP
 
 import pandas as pd
 from ..utils.cache import TTL_DAILY, TTL_FINANCIAL, cache
-from ..utils.formatter import df_to_json, error_response
+from ..utils.formatter import df_to_json, error_response, slim_df
 from ..utils.symbol import normalize_symbol
 
 
@@ -159,6 +159,7 @@ def register(mcp: FastMCP):
                 return error_response(
                     f"机构持股数据为空 ({symbol})", "get_institutional_holdings"
                 )
+            df = slim_df(df)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
@@ -200,6 +201,7 @@ def register(mcp: FastMCP):
                     df = df[df[code_cols[0]].astype(str).str.contains(symbol)]
 
             df = df.head(num_results)
+            df = slim_df(df)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_DAILY)
             return result

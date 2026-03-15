@@ -14,7 +14,7 @@ import akshare as ak
 from mcp.server.fastmcp import FastMCP
 
 from ..utils.cache import TTL_DAILY, TTL_REALTIME, cache
-from ..utils.formatter import df_to_json, error_response
+from ..utils.formatter import df_to_json, error_response, slim_df
 from ..utils.symbol import normalize_symbol
 
 
@@ -70,7 +70,8 @@ def register(mcp: FastMCP):
             if date:
                 kwargs["date"] = date
             df = ak.stock_report_disclosure(**kwargs)
-            result = df_to_json(df, max_rows=100)
+            df = slim_df(df)
+            result = df_to_json(df, max_rows=50)
             cache.set(cache_key, result, TTL_DAILY)
             return result
         except Exception as e:

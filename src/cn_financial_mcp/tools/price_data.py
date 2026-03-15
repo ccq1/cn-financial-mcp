@@ -22,7 +22,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ..utils.cache import TTL_DAILY, TTL_REALTIME, cache
 from ..utils.fallback import call_with_fallback
-from ..utils.formatter import df_to_json, error_response
+from ..utils.formatter import df_to_json, error_response, slim_df
 from ..utils.symbol import format_with_exchange, normalize_symbol
 
 logger = logging.getLogger("cn-financial-mcp")
@@ -247,6 +247,7 @@ def register(mcp: FastMCP):
             if cap_col:
                 df = df.sort_values(cap_col, ascending=False)
 
+            df = slim_df(df)
             result = df_to_json(df, max_rows=max_results)
             cache.set(cache_key, result, TTL_DAILY)
             return result

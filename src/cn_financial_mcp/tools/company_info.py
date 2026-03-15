@@ -19,7 +19,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ..utils.cache import TTL_COMPANY, cache
 from ..utils.fallback import call_with_fallback
-from ..utils.formatter import df_to_json, dict_to_json, error_response
+from ..utils.formatter import df_to_json, dict_to_json, error_response, slim_df
 from ..utils.symbol import normalize_symbol
 
 
@@ -199,7 +199,8 @@ def register(mcp: FastMCP):
 
             # 东方财富行业成分股 (unique source, no THS alternative)
             df = ak.stock_board_industry_cons_em(symbol=industry)
-            result = df_to_json(df, max_rows=50)
+            df = slim_df(df)
+            result = df_to_json(df, max_rows=30)
             cache.set(cache_key, result, TTL_COMPANY)
             return result
         except Exception as e:

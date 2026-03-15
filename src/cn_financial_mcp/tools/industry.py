@@ -20,7 +20,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ..utils.cache import TTL_DAILY, cache
 from ..utils.fallback import call_with_fallback
-from ..utils.formatter import df_to_json, error_response
+from ..utils.formatter import df_to_json, error_response, slim_df
 
 
 def register(mcp: FastMCP):
@@ -74,6 +74,7 @@ def register(mcp: FastMCP):
         try:
             # 东方财富行业成分股 (unique source, no alternative)
             df = ak.stock_board_industry_cons_em(symbol=industry)
+            df = slim_df(df)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_DAILY)
             return result
@@ -147,7 +148,8 @@ def register(mcp: FastMCP):
                 return error_response(
                     f"板块资金流向数据为空 ({sector_type})", "get_sector_fund_flow"
                 )
-            result = df_to_json(df, max_rows=50)
+            df = slim_df(df)
+            result = df_to_json(df, max_rows=30)
             cache.set(cache_key, result, TTL_DAILY)
             return result
         except Exception as e:

@@ -18,7 +18,7 @@ import akshare as ak
 from mcp.server.fastmcp import FastMCP
 
 from ..utils.cache import TTL_DAILY, TTL_REALTIME, cache
-from ..utils.formatter import df_to_json, error_response
+from ..utils.formatter import df_to_json, error_response, slim_df
 from ..utils.symbol import get_exchange, normalize_symbol
 
 
@@ -44,6 +44,7 @@ def register(mcp: FastMCP):
         try:
             # 东方财富指数行情 (unique source)
             df = ak.stock_zh_index_spot_em()
+            df = slim_df(df)
             result = df_to_json(df, max_rows=30)
             cache.set(cache_key, result, TTL_REALTIME)
             return result
@@ -78,6 +79,7 @@ def register(mcp: FastMCP):
                 return error_response(
                     f"资金流向数据为空 ({symbol})", "get_money_flow"
                 )
+            df = slim_df(df)
             result = df_to_json(df, max_rows=30)
             cache.set(cache_key, result, TTL_DAILY)
             return result
@@ -112,7 +114,8 @@ def register(mcp: FastMCP):
                 return error_response(
                     "北向资金数据为空", "get_north_bound_flow"
                 )
-            result = df_to_json(df, max_rows=60)
+            df = slim_df(df)
+            result = df_to_json(df, max_rows=30)
             cache.set(cache_key, result, TTL_DAILY)
             return result
         except Exception as e:
@@ -185,7 +188,8 @@ def register(mcp: FastMCP):
                 start_date=start.strftime("%Y%m%d"),
                 end_date=today.strftime("%Y%m%d"),
             )
-            result = df_to_json(df, max_rows=100)
+            df = slim_df(df)
+            result = df_to_json(df, max_rows=30)
             cache.set(cache_key, result, TTL_DAILY)
             return result
         except Exception as e:

@@ -18,7 +18,15 @@ import akshare as ak
 from mcp.server.fastmcp import FastMCP
 
 from ..utils.cache import TTL_FINANCIAL, cache
-from ..utils.formatter import df_to_json, dict_to_json, error_response
+from ..utils.formatter import (
+    BALANCE_SHEET_COLS,
+    CASHFLOW_STATEMENT_COLS,
+    INCOME_STATEMENT_COLS,
+    df_to_json,
+    error_response,
+    slim_df,
+    slim_financial_df,
+)
 from ..utils.symbol import format_em_symbol, normalize_symbol
 
 
@@ -56,6 +64,7 @@ def register(mcp: FastMCP):
                 )
             if num_quarters > 0:
                 df = df.head(num_quarters)
+            df = slim_financial_df(df, INCOME_STATEMENT_COLS)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
@@ -97,6 +106,7 @@ def register(mcp: FastMCP):
                 )
             if num_quarters > 0:
                 df = df.head(num_quarters)
+            df = slim_financial_df(df, BALANCE_SHEET_COLS)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
@@ -136,6 +146,7 @@ def register(mcp: FastMCP):
                 )
             if num_quarters > 0:
                 df = df.head(num_quarters)
+            df = slim_financial_df(df, CASHFLOW_STATEMENT_COLS)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
@@ -172,36 +183,56 @@ def register(mcp: FastMCP):
         try:
             # Try each financial statement to find the item
             # Note: all EM financial APIs require exchange-prefixed symbol
+            # We slim each statement first so the user can search by Chinese
+            # name (e.g. "营业总收入") or English name (e.g. "NETPROFIT").
             statements = [
-                ("利润表", ak.stock_profit_sheet_by_quarterly_em),
-                ("资产负债表", ak.stock_balance_sheet_by_report_em),
-                ("现金流量表", ak.stock_cash_flow_sheet_by_quarterly_em),
+                ("利润表", ak.stock_profit_sheet_by_quarterly_em, INCOME_STATEMENT_COLS),
+                ("资产负债表", ak.stock_balance_sheet_by_report_em, BALANCE_SHEET_COLS),
+                ("现金流量表", ak.stock_cash_flow_sheet_by_quarterly_em, CASHFLOW_STATEMENT_COLS),
             ]
 
-            for stmt_name, func in statements:
+            for stmt_name, func, whitelist in statements:
                 try:
                     df = func(symbol=em_symbol)
                 except Exception:
                     continue
                 if df is None or df.empty:
                     continue
-                # Find columns matching the item name
-                matching_cols = [
-                    c for c in df.columns if item in c
-                ]
-                if matching_cols:
-                    # Return the date column + matching columns
-                    date_cols = [
-                        c for c in df.columns
-                        if "日期" in c or "报告" in c or "期" in c
-                    ]
-                    keep_cols = date_cols + matching_cols
-                    available = [c for c in keep_cols if c in df.columns]
-                    if num_quarters > 0:
-                        df = df.head(num_quarters)
-                    result = df_to_json(df[available] if available else df[matching_cols])
-                    cache.set(cache_key, result, TTL_FINANCIAL)
-                    return result
+
+                # Slim the DataFrame so columns are in clean Chinese
+                slim = slim_financial_df(df, whitelist)
+
+                # Search for matching columns (fuzzy match)
+                matching_cols = [c for c in slim.columns if item in c]
+                if not matching_cols:
+                    # Also try case-insensitive match on original columns
+                    raw_match = [c for c in df.columns if item.upper() in c.upper()]
+                    if raw_match:
+                        # Found in raw columns — extract with date
+                        date_cols = [
+                            c for c in df.columns
+                            if "REPORT_DATE_NAME" in c.upper()
+                        ]
+                        keep = date_cols + raw_match
+                        avail = [c for c in keep if c in df.columns]
+                        sub = df[avail] if avail else df[raw_match]
+                        if num_quarters > 0:
+                            sub = sub.head(num_quarters)
+                        result = df_to_json(slim_df(sub))
+                        cache.set(cache_key, result, TTL_FINANCIAL)
+                        return result
+                    continue
+
+                # Found in slimmed Chinese columns
+                date_cols = [c for c in slim.columns if "报告期" in c]
+                keep = date_cols + matching_cols
+                avail = [c for c in keep if c in slim.columns]
+                sub = slim[avail] if avail else slim[matching_cols]
+                if num_quarters > 0:
+                    sub = sub.head(num_quarters)
+                result = df_to_json(sub)
+                cache.set(cache_key, result, TTL_FINANCIAL)
+                return result
 
             return error_response(
                 f"在三大财务报表中未找到科目 '{item}'", "get_financial_line_item"
@@ -242,6 +273,7 @@ def register(mcp: FastMCP):
                 )
             if num_periods > 0:
                 df = df.head(num_periods)
+            df = slim_df(df)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
@@ -273,6 +305,10 @@ def register(mcp: FastMCP):
 
         try:
             df = ak.stock_financial_analysis_indicator(symbol=symbol)
+            if df is None or df.empty:
+                return error_response(
+                    f"增长指标数据为空 ({symbol})", "get_growth_rates"
+                )
             # Filter growth-related columns
             growth_cols = [
                 c for c in df.columns
@@ -282,6 +318,7 @@ def register(mcp: FastMCP):
                 df = df[growth_cols]
             if num_periods > 0:
                 df = df.head(num_periods)
+            df = slim_df(df)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
@@ -313,6 +350,10 @@ def register(mcp: FastMCP):
 
         try:
             df = ak.stock_financial_analysis_indicator(symbol=symbol)
+            if df is None or df.empty:
+                return error_response(
+                    f"每股指标数据为空 ({symbol})", "get_per_share_data"
+                )
             # Filter per-share columns
             share_cols = [
                 c for c in df.columns
@@ -322,6 +363,7 @@ def register(mcp: FastMCP):
                 df = df[share_cols]
             if num_periods > 0:
                 df = df.head(num_periods)
+            df = slim_df(df)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
@@ -349,6 +391,7 @@ def register(mcp: FastMCP):
 
         try:
             df = ak.stock_zygc_em(symbol=symbol)
+            df = slim_df(df)
             result = df_to_json(df)
             cache.set(cache_key, result, TTL_FINANCIAL)
             return result
