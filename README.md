@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+"/>
   <img src="https://img.shields.io/badge/MCP-1.0-green.svg" alt="MCP 1.0"/>
-  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"/>
+  <img src="https://img.shields.io/badge/License-Apache--2.0-yellow.svg" alt="Apache-2.0 License"/>
   <img src="https://img.shields.io/badge/Data-A%E8%82%A1%20%7C%20%E5%AE%8F%E8%A7%82%20%7C%20%E8%A1%8C%E4%B8%9A-red.svg" alt="A股 | 宏观 | 行业"/>
 </p>
 
