@@ -1,7 +1,7 @@
 # cn-financial-mcp
 
 <p align="center">
-  <strong>中国大陆金融数据 MCP Server</strong><br/>
+  <strong>cn大陆金融数据 MCP Server</strong><br/>
   基于 <a href="https://akshare.akfamily.xyz">AKShare</a> · 支持 <a href="https://modelcontextprotocol.io">MCP 协议</a> · 42 个金融工具
 </p>
 
@@ -30,7 +30,7 @@
 
 ## 简介
 
-**cn-financial-mcp** 是一个遵循 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 标准的金融数据服务器，专注于中国大陆市场。它让任何支持 MCP 的 AI Agent（如 Claude Code、Cursor、自定义 Agent）都能直接调用 A 股行情、财报、行业、宏观经济等 **42 个金融工具**，无需 API Key，开箱即用。
+**cn-financial-mcp** 是一个遵循 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 标准的金融数据服务器，专注于cn大陆市场。它让任何支持 MCP 的 AI Agent（如 Claude Code、Cursor、自定义 Agent）都能直接调用 A 股行情、财报、行业、宏观经济等 **42 个金融工具**，无需 API Key，开箱即用。
 
 底层数据来源于 [AKShare](https://akshare.akfamily.xyz)，并内置多数据源自动 fallback 机制（东方财富 → 新浪 / 腾讯 / 同花顺），确保在不同网络环境下的可用性。
 
