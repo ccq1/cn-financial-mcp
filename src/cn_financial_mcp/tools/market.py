@@ -1,5 +1,5 @@
 """
-Category 6: Market Overview & Capital Flows (V0.3)
+Category 6: Market Overview & Capital Flows (V0.3 + fallback)
 
 Tools:
   26. get_market_overview  - Major index snapshots
@@ -10,16 +10,26 @@ Tools:
 
 Data source:
   东方财富 (eastmoney) — most functions have no alternative source
+  Fallback: 新浪财经 (sina) for market overview
+            datacenter-web for north_bound_flow, sector_fund_flow
 """
 
 from __future__ import annotations
 
+import datetime
+import logging
+
 import akshare as ak
+import pandas as pd
+import requests as _requests
 from mcp.server.fastmcp import FastMCP
 
 from ..utils.cache import TTL_DAILY, TTL_REALTIME, cache
 from ..utils.formatter import df_to_json, error_response, slim_df
+from ..utils.sina_fallback import get_market_overview_sina
 from ..utils.symbol import get_exchange, normalize_symbol
+
+logger = logging.getLogger("cn-financial-mcp")
 
 
 def register(mcp: FastMCP):
@@ -42,16 +52,25 @@ def register(mcp: FastMCP):
             return cached
 
         try:
-            # 东方财富指数行情 (unique source)
+            # Primary: 东方财富指数行情
             df = ak.stock_zh_index_spot_em()
             df = slim_df(df)
             result = df_to_json(df, max_rows=30)
             cache.set(cache_key, result, TTL_REALTIME)
             return result
-        except Exception as e:
-            return error_response(
-                f"获取市场概览失败: {e}", "get_market_overview"
-            )
+        except Exception as em_err:
+            logger.debug(f"东方财富市场概览失败: {em_err}")
+            # Fallback: 新浪实时指数
+            try:
+                df = get_market_overview_sina()
+                result = df_to_json(df)
+                cache.set(cache_key, result, TTL_REALTIME)
+                return result
+            except Exception as sina_err:
+                return error_response(
+                    f"获取市场概览失败: 东方财富({em_err}), 新浪({sina_err})",
+                    "get_market_overview",
+                )
 
     @mcp.tool()
     async def get_money_flow(symbol: str) -> str:
@@ -106,9 +125,6 @@ def register(mcp: FastMCP):
             return cached
 
         try:
-            # stock_hsgt_north_net_flow_in_em has been removed;
-            # use stock_hsgt_hist_em which provides historical HSGT data.
-            # Valid symbols: "北向资金", "沪股通", "深股通", "南向资金" etc.
             df = ak.stock_hsgt_hist_em(symbol="北向资金")
             if df is None or df.empty:
                 return error_response(
@@ -119,9 +135,35 @@ def register(mcp: FastMCP):
             cache.set(cache_key, result, TTL_DAILY)
             return result
         except Exception as e:
-            return error_response(
-                f"获取北向资金失败: {e}", "get_north_bound_flow"
-            )
+            # Fallback: datacenter 接口
+            try:
+                url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+                params = {
+                    "reportName": "RPT_MUTUAL_FLOW_NORTHBOUND",
+                    "columns": "ALL",
+                    "pageNumber": 1,
+                    "pageSize": 30,
+                    "sortColumns": "TRADE_DATE",
+                    "sortTypes": -1,
+                    "source": "WEB",
+                    "client": "WEB",
+                }
+                resp = _requests.get(url, params=params, timeout=10)
+                data = resp.json()
+                if data.get("result") and data["result"].get("data"):
+                    df = pd.DataFrame(data["result"]["data"])
+                    df = slim_df(df)
+                    result = df_to_json(df, max_rows=30)
+                    cache.set(cache_key, result, TTL_DAILY)
+                    return result
+                return error_response(
+                    f"获取北向资金失败: {e}", "get_north_bound_flow"
+                )
+            except Exception as fb_err:
+                return error_response(
+                    f"获取北向资金失败: 主源({e}), 备源({fb_err})",
+                    "get_north_bound_flow",
+                )
 
     @mcp.tool()
     async def get_limit_up_down(direction: str = "涨停") -> str:
@@ -141,7 +183,6 @@ def register(mcp: FastMCP):
             return cached
 
         try:
-            import datetime
             today = datetime.date.today().strftime("%Y%m%d")
 
             if direction == "涨停":
@@ -180,7 +221,6 @@ def register(mcp: FastMCP):
             return cached
 
         try:
-            import datetime
             today = datetime.date.today()
             start = today - datetime.timedelta(days=num_days * 2)  # Buffer for non-trading days
 

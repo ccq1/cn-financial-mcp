@@ -18,6 +18,8 @@ from __future__ import annotations
 import akshare as ak
 from mcp.server.fastmcp import FastMCP
 
+import requests as _requests
+
 from ..utils.cache import TTL_DAILY, cache
 from ..utils.fallback import call_with_fallback
 from ..utils.formatter import df_to_json, error_response, slim_df
@@ -138,9 +140,6 @@ def register(mcp: FastMCP):
             return cached
 
         try:
-            # ak.stock_sector_fund_flow_rank signature:
-            #   indicator: {"今日", "5日", "10日"}
-            #   sector_type: {"行业资金流", "概念资金流", "地域资金流"}
             df = ak.stock_sector_fund_flow_rank(
                 indicator=indicator, sector_type=sector_type
             )
@@ -153,10 +152,41 @@ def register(mcp: FastMCP):
             cache.set(cache_key, result, TTL_DAILY)
             return result
         except Exception as e:
-            return error_response(
-                f"获取板块资金流向失败 ({sector_type}): {e}",
-                "get_sector_fund_flow",
-            )
+            # Fallback: datacenter 板块资金流排名
+            try:
+                url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+                report_map = {
+                    "行业资金流": "RPT_SECTOR_FUND_FLOW_INDUSTRY",
+                    "概念资金流": "RPT_SECTOR_FUND_FLOW_CONCEPT",
+                    "地域资金流": "RPT_SECTOR_FUND_FLOW_AREA",
+                }
+                report = report_map.get(sector_type, "RPT_SECTOR_FUND_FLOW_INDUSTRY")
+                params = {
+                    "reportName": report,
+                    "columns": "ALL",
+                    "pageNumber": 1,
+                    "pageSize": 30,
+                    "sortColumns": "CHANGE_RATE",
+                    "sortTypes": -1,
+                    "source": "WEB",
+                    "client": "WEB",
+                }
+                resp = _requests.get(url, params=params, timeout=10)
+                data = resp.json()
+                if data.get("result") and data["result"].get("data"):
+                    df = pd.DataFrame(data["result"]["data"])
+                    df = slim_df(df)
+                    result = df_to_json(df, max_rows=30)
+                    cache.set(cache_key, result, TTL_DAILY)
+                    return result
+                return error_response(
+                    f"获取板块资金流向失败: {e}", "get_sector_fund_flow"
+                )
+            except Exception as fb_err:
+                return error_response(
+                    f"获取板块资金流向失败 ({sector_type}): 主源({e}), 备源({fb_err})",
+                    "get_sector_fund_flow",
+                )
 
     @mcp.tool()
     async def get_industry_pe(
